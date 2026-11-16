@@ -8,6 +8,14 @@ import {
 } from '../types';
 import { availableDays } from '../config';
 
+const VALID_BUTTON_STATES = [
+  'Entrenar',
+  'Avisar',
+  'Cambiar',
+  'Finalizada',
+  'Borrar',
+];
+
 export function parsePreferenceValue(value: string | null): {
   time: string | null;
   className: string | null;
@@ -77,35 +85,56 @@ async function findReservationButton(
   await page
     .waitForSelector('div[data-magellan-destination]', { timeout: 15000 })
     .catch(() => {});
-  const buttons = await page.$$(
+
+  const allButtons = await page.$$(
     `div[data-magellan-destination="${reservationKey}"] button`
   );
-  if (buttons.length === 0) {
+
+  // Filtrar solo botones de acción de reserva (ignorar botones como "Wod")
+  const actionButtons: ElementHandle<Element>[] = [];
+  for (const btn of allButtons) {
+    const text = await btn.evaluate(el => el.textContent?.trim() ?? '');
+    if (VALID_BUTTON_STATES.includes(text)) {
+      actionButtons.push(btn);
+    }
+  }
+
+  if (actionButtons.length === 0) {
     const keys = await page.$$eval('div[data-magellan-destination]', els =>
       els.map(e => e.getAttribute('data-magellan-destination'))
     );
     console.log('Buscaba:', reservationKey);
     console.log('URL:', page.url());
     console.log('Slots en pantalla:', keys.join(', ') || '(ninguno)');
-    const text = await page.evaluate(() => document.body.innerText);
-    console.log('Texto:', text.slice(0, 800).replace(/\n+/g, ' | '));
     return null;
   }
-  if (!className || buttons.length === 1) return buttons[0];
 
-  for (const button of buttons) {
-    const sectionText = await button.evaluate(el => {
-      const section = el.closest('[data-magellan-destination]');
-      return section?.textContent ?? '';
-    });
-    if (sectionText.toLowerCase().includes(className.toLowerCase())) {
+  if (!className || actionButtons.length === 1) return actionButtons[0];
+
+  for (const button of actionButtons) {
+    const cardText = await button.evaluate((el, validStates) => {
+      let current: Element | null = el.parentElement;
+      let bestText = current?.textContent ?? '';
+      while (current && !current.hasAttribute('data-magellan-destination')) {
+        const btns = Array.from(current.querySelectorAll('button')).filter(b =>
+          validStates.includes(b.textContent?.trim() ?? '')
+        );
+        if (btns.length > 1) break;
+        bestText = current.textContent ?? '';
+        current = current.parentElement;
+      }
+      return bestText;
+    }, VALID_BUTTON_STATES);
+
+    if (cardText.toLowerCase().includes(className.toLowerCase())) {
       return button;
     }
   }
+
   console.log(
     `⚠️ Class "${className}" not found at this time slot — using first available`
   );
-  return buttons[0];
+  return actionButtons[0];
 }
 
 export async function makeReservation(
