@@ -7,10 +7,20 @@ export async function login(
 ): Promise<void> {
   await page.type('#body_body_CtlLogin_IoEmail', email);
   await page.type('#body_body_CtlLogin_IoPassword', password);
-  await Promise.all([
-    page.waitForNavigation({ timeout: 60000 }),
-    page.click('#body_body_CtlLogin_CtlAceptar'),
-  ]);
+  try {
+    await Promise.all([
+      page.waitForNavigation({ timeout: 30000 }),
+      page.click('#body_body_CtlLogin_CtlAceptar'),
+    ]);
+  } catch (error) {
+    const text = await page.evaluate(() => document.body.innerText);
+    console.log('URL actual:', page.url());
+    console.log(
+      'Texto en pantalla:',
+      text.slice(0, 1500).replace(/\n+/g, ' | ')
+    );
+    throw error;
+  }
 
   // click in "Don't remember this browser" (second button in the device choice)
   const secondButtonSelector = '#body_body_CtlUp label.button:nth-of-type(2)';
