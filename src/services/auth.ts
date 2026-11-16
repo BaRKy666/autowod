@@ -7,35 +7,42 @@ export async function login(
   email: string,
   password: string
 ): Promise<void> {
-  await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9' });
   await page.type('#body_body_CtlLogin_IoEmail', email);
   await page.type('#body_body_CtlLogin_IoPassword', password);
   await page.click('#body_body_CtlLogin_CtlAceptar');
 
-  // Esperar a la pregunta del dispositivo o a que cargue otra página
+  // Esperar a la pregunta "¿recordar este dispositivo?" (o a que ya haya entrado)
   await Promise.race([
     page.waitForSelector(DEVICE_CHOICE, { timeout: 45000 }),
-    page.waitForNavigation({ timeout: 45000 }),
-  ]).catch(async () => {
-    const text = await page.evaluate(() => document.body.innerText);
-    console.log('URL actual:', page.url());
-    console.log(
-      'Texto en pantalla:',
-      text.slice(0, 1500).replace(/\n+/g, ' | ')
-    );
-  });
+    page.waitForFunction(() => !location.href.includes('login.aspx'), {
+      timeout: 45000,
+    }),
+  ]).catch(() => {});
 
-  // "No recordar" (segundo botón) y esperar a que cargue la página del box
-  const secondButton = await page.$(
-    '#body_body_CtlUp label.button:nth-of-type(2)'
-  );
-  if (secondButton) {
-    await Promise.all([
-      page
-        .waitForNavigation({ timeout: 30000, waitUntil: 'networkidle2' })
-        .catch(() => {}),
-      secondButton.click(),
-    ]);
+  const buttons = await page.$$(DEVICE_CHOICE);
+  if (buttons.length > 0) {
+    // Segundo botón = "No recordar"
+    const target = buttons[1] ?? buttons[0];
+    await target.evaluate(el => (el as HTMLElement).click());
+
+    // Esperar a salir de la página de login (llega al box)
+    await page
+      .waitForFunction(() => !location.href.includes('login.aspx'), {
+        timeout: 30000,
+      })
+      .catch(async () => {
+        console.log('⚠️ Sigue en login tras elegir dispositivo.');
+        const html = await page.evaluate(
+          () => document.querySelector('#body_body_CtlUp')?.outerHTML ?? ''
+        );
+        const text = await page.evaluate(() => document.body.innerText);
+        console.log('HTML dispositivo:', html.slice(0, 1500));
+        console.log(
+          'Texto en pantalla:',
+          text.slice(0, 800).replace(/\n+/g, ' | ')
+        );
+      });
+    await page.waitForNetworkIdle({ timeout: 5000 }).catch(() => {});
   }
 
   console.log('URL tras login:', page.url());
