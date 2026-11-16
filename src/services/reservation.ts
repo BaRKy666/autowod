@@ -199,23 +199,23 @@ export async function makeReservation(
     case 'Entrenar':
       await reservationButton.click();
       await page.waitForNetworkIdle({ timeout: 5000 }).catch(() => {});
-      result.message = `✅ ${pageTitleText} Successfully booked! 💪`;
+      result.message = `✅ ${pageTitleText} (${time}${className ? ` - ${className}` : ''}) Successfully booked! 💪`;
       break;
     case 'Avisar':
       await reservationButton.click();
       await page.waitForNetworkIdle({ timeout: 5000 }).catch(() => {});
-      result.message = `⏳ ${pageTitleText} Added to waiting list. Fingers crossed! 🤞`;
+      result.message = `⏳ ${pageTitleText} (${time}${className ? ` - ${className}` : ''}) Added to waiting list. Fingers crossed! 🤞`;
       break;
     case 'Cambiar':
-      result.message = `⚠️ ${pageTitleText} You're already booked for a different time slot`;
+      result.message = `⚠️ ${pageTitleText} (${time}) You're already booked for a different time slot`;
       result.success = false;
       break;
     case 'Finalizada':
-      result.message = `❌ ${pageTitleText} This class has already finished`;
+      result.message = `❌ ${pageTitleText} (${time}) This class has already finished`;
       result.success = false;
       break;
     case 'Borrar':
-      result.message = `ℹ️ ${pageTitleText} You're already booked`;
+      result.message = `ℹ️ ${pageTitleText} (${time}${className ? ` - ${className}` : ''}) You're already booked`;
       result.success = false;
       break;
     default:
@@ -294,20 +294,34 @@ export async function processReservations(
   for (let i = 0; i < availableDays; i++) {
     const weekDay = await getWeekDayFromUrl(page);
     const preference = preferences[weekDay as WeekDay];
-    const result = await makeReservation(page, preference);
-    dayResults.push({ weekDay, result });
-    console.log(result.message);
+    const entries = preference
+      ? preference
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+      : [];
 
-    if (!preference) {
+    if (entries.length === 0) {
+      const result = await makeReservation(page, null);
+      dayResults.push({ weekDay, result });
+      console.log(result.message);
       skipped++;
-    } else if (result.state === 'Entrenar' && result.success) {
-      booked++;
-    } else if (result.state === 'Avisar' && result.success) {
-      waitlisted++;
-    } else if (result.state === 'Borrar') {
-      alreadyBooked++;
     } else {
-      other++;
+      for (const entry of entries) {
+        const result = await makeReservation(page, entry);
+        dayResults.push({ weekDay, result });
+        console.log(result.message);
+
+        if (result.state === 'Entrenar' && result.success) {
+          booked++;
+        } else if (result.state === 'Avisar' && result.success) {
+          waitlisted++;
+        } else if (result.state === 'Borrar') {
+          alreadyBooked++;
+        } else {
+          other++;
+        }
+      }
     }
 
     if (i === availableDays - 1) break;
