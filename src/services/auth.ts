@@ -25,12 +25,18 @@ export async function login(
     );
   });
 
-  // "No recordar" (segundo botón de la pregunta del dispositivo)
+  // "No recordar" (segundo botón) y esperar a que cargue la página del box
   const secondButton = await page.$(
     '#body_body_CtlUp label.button:nth-of-type(2)'
   );
   if (secondButton) {
-    await secondButton.click();
-    await page.waitForNetworkIdle({ timeout: 5000 }).catch(() => {});
+    await Promise.all([
+      page
+        .waitForNavigation({ timeout: 30000, waitUntil: 'networkidle2' })
+        .catch(() => {}),
+      secondButton.click(),
+    ]);
   }
+
+  console.log('URL tras login:', page.url());
 }
